@@ -1,18 +1,21 @@
 using DSharpPlus;
-using DSharpPlus.CommandsNext;
+using DSharpPlus.Entities;
+using DSharpPlus.EventArgs;
 using DSharpPlus.SlashCommands;
 using kitKateBot.Commands;
 
 namespace kitKateBot.Services.Impl;
 
-public class DiscordClientService : BackgroundService, IDiscordClientService
+public class DiscordClientService : IDiscordClientService
 {
     private readonly IConfiguration _configuration;
     private readonly DiscordClient _client;
+    private readonly IServiceProvider _provider;
 
-    public DiscordClientService(IConfiguration configuration)
+    public DiscordClientService(IConfiguration configuration, IServiceProvider provider)
     {
         _configuration = configuration;
+        _provider = provider;
 
         _client = new DiscordClient(new DiscordConfiguration 
         {
@@ -21,35 +24,36 @@ public class DiscordClientService : BackgroundService, IDiscordClientService
             Intents = DiscordIntents.All,
             MinimumLogLevel = LogLevel.Debug
         });
+
+        _client.Ready += OnClientReady;
+    }
+
+    protected async Task OnClientReady(DiscordClient client, ReadyEventArgs readyEventArgs)
+    {
+        var activity = new DiscordActivity 
+        { 
+            Name = "twitch.tv/mood_kitKate",
+            ActivityType = ActivityType.Streaming,
+            StreamUrl = "https://twitch.tv/mood_kitKate"
+        };
+
+        await client.UpdateStatusAsync(activity);
     }
 
     public async Task RunAsync()
     {   
-        AddCommands();
         AddSlashCommands();
 
         await _client.ConnectAsync();
     }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        await RunAsync();
-    }
-
-    private void AddCommands()
-    {
-        var commands = _client.UseCommandsNext(new CommandsNextConfiguration
-        {
-            StringPrefixes = new string[] { _configuration["Discord:Prefix"]! },
-            EnableDms = false,
-            EnableMentionPrefix = true 
-        });
-
-        commands.RegisterCommands<CommandsModule>();
-    }
-
     private void AddSlashCommands()
     {
-        _client.UseSlashCommands().RegisterCommands<SlashCommandsModule>();
+        var commands = _client.UseSlashCommands(new SlashCommandsConfiguration
+        {
+            Services = _provider
+        });
+
+        commands.RegisterCommands<TwitchCommandsModule>();
     }
 }
